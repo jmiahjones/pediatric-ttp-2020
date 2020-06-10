@@ -1,0 +1,3 @@
+useDynLib(aucC, .registration=TRUE)
+export("aucC_wrap")
+importFrom(Rcpp, evalCpp)
