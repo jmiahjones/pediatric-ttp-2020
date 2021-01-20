@@ -1,13 +1,19 @@
 ## Loading the Datasets
 
 trained.model.file <- "./results/trained-models-no-biomarkers.RData"
+raw.data.file <- "./data/Time to Positivity - Merged Philly and URMC. FINAL. 12.8.20.xlsx"
+
+main_vars <- c('Sex', 'Age', 'GAge', 'Appearance', 
+               'Temperature', 'DaysIll', 'Cough', 
+               'UTI', 'TTP')
+sens_vars <- c(main_vars, "WBCC", "Bands")
 
 library(readxl)
 library(dplyr)
 library(caret)
 library(pROC)
 
-fullData <- read_xlsx("./data/TTP-Merged-Data.xlsx") %>%
+fullData <- read_xlsx(raw.data.file) %>%
   rename(WBCC=`White Blood Cell Count`,
          Bands=`Total Bands`,
          Appearance=`Ill Appearance`,
@@ -16,7 +22,8 @@ fullData <- read_xlsx("./data/TTP-Merged-Data.xlsx") %>%
          Cough=`Cough Present`,
          TTP=`Blood Culture Time to Positivity (Hours)`,
          UTI=`Urinary Tract Inflammation`,
-         Bacteremia=`True Bacteremia`
+         Bacteremia=`Bacteremia #1 (Outcome #1)`,
+         BacteremiaSens=`Bacteremia #2 (Outcome #2-Sensitivity analysis)`
   ) %>%
   mutate(TTP = ifelse(!is.na(TTP), TTP,
                       130)) %>% 
@@ -30,16 +37,10 @@ fullData <- read_xlsx("./data/TTP-Merged-Data.xlsx") %>%
 
 ##### Missing Data
 mice::md.pattern(fullData)
-## There are too few missing values for GAge, Appearance, Cough, and DaysIll.
-## Remove these babies from the analysis.
-## Otherwise, there are many missing values for the test results.
+## There are ~7 missing UTI  +/- records. Let's keep a separate NA level.
 ## We set these as a separate factor level.
 
 fullData <- fullData %>%
-  filter(!is.na(Appearance) &
-           !is.na(Cough) &
-           !is.na(GAge) &
-           !is.na(DaysIll)) %>%
   mutate_at(vars(UTI),
             ~addNA(.))
 
@@ -47,21 +48,21 @@ fullData <- fullData %>%
 N.Y.U.lvls <- c("No", "Yes", "Unknown")
 levels(fullData$Sex) <- c("M", "F")
 levels(fullData$Appearance) <- c("No", "Yes")
-levels(fullData$Cough) <- c("No", "Yes")
+levels(fullData$Cough) <- c("Yes", "No")
 levels(fullData$UTI) <- N.Y.U.lvls # set NA level
 levels(fullData$Bacteremia) <- c("No", "Yes")
 
 mice::md.pattern(fullData)
 
-trainingData <- fullData %>% select(-WBCC, -Bands)
+# trainingData <- fullData # %>% select(-site)
 
-train_props <- trainingData %>% pull(Bacteremia) %>% 
+train_props <- fullData %>% pull(Bacteremia) %>% 
   table %>% prop.table
 
 prop_wt <- train_props[1]/train_props[2]
 
-record_ids <- trainingData$`Record ID`
-trainingData <- dplyr::select(trainingData, -`Record ID`)
+record_ids <- fullData$`Record ID`
+trainingData <- dplyr::select(fullData, all_of(main_vars), Bacteremia)
 
 
 ############# Begin Training ################

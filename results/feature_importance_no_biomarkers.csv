@@ -1,5 +1,12 @@
 "Feature","Gain"
-"TTP",64
-"AppearanceYes",29.1
-"Temperature",5.7
-"DaysIll",1.2
+"TTP",58.1
+"AppearanceYes",17.6
+"Temperature",9.1
+"DaysIll",5.1
+"Age",3.6
+"GAge",3.5
+"UTIYes",1.9
+"SexM",0.6
+"SexF",0.3
+"CoughYes",0.2
+"UTIUnknown",0

@@ -10,6 +10,7 @@ library(dplyr)
 
 cluster.file <- "./cluster-w-biomarkers.log"
 trained.model.file <- "./results/trained-models-w-biomarkers.RData"
+feature.importance.file <- "./results/feature_importance_w_biomarkers.csv"
 oos.prediction.file <- "./results/trained-model-predictions-w-biomarkers.RData"
 boot.res.file <- "./results/results-bbccv-w-biomarkers.RData"
 boot.ci.csv <- "./results/ci-w-biomarkers.csv"
@@ -48,7 +49,7 @@ resamples(trained_models) %>% summary(metric="ROC")
 
 xgboost::xgb.importance(model=xgbFit$finalModel) %>% select(Feature, Gain) %>% 
   mutate(Gain=round(100*Gain, 1)) %>% 
-  write.csv(file="./results/feature_importance_w_biomarkers.csv", row.names = F)
+  write.csv(file=feature.importance.file, row.names = F)
 
 ### Bootstrap Approach
 set.seed(530981)
@@ -137,7 +138,7 @@ config.selection <- function(boot.mat, max=TRUE){
   return(final.best.idx)
 }
 
-cut.pts <- c(0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6)
+cut.pts <- c(0.1, 0.2, 0.25, 0.3)
 library(Rcpp)
 library(aucC)
 library(doParallel)
@@ -145,7 +146,7 @@ library(abind)
 library(foreach)
 
 message("Beginning Bootstrap...")
-cl <- makeCluster(5, "FORK", outfile=cluster.file)
+cl <- makeCluster(4, "FORK", outfile=cluster.file)
 registerDoParallel(cl)
 boot_stats <- foreach(b=1:B, 
                       .noexport = "aucC"
@@ -194,8 +195,8 @@ save(boot_stats, file=boot.res.file)
 print(paste0("# Errors: ", sum(is.na(boot_stats))))
 boot_stats <- abind(boot_stats[!is.na(boot_stats)], along=3)
 
-apply(boot_stats[,1,], 1, function(x) sum(is.na(x)))
-apply(boot_stats[,7,], 1, function(x) sum(is.na(x)))
+# apply(boot_stats[,1,], 1, function(x) sum(is.na(x)))
+# apply(boot_stats[,7,], 1, function(x) sum(is.na(x)))
 
 # boot_stats <- boot_stats[,-1,]
 cis <- apply(boot_stats, c(1,2), quantile, probs=c(0.025, 0.975), na.rm=T)

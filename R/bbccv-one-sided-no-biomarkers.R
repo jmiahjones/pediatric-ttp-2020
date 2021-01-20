@@ -85,8 +85,8 @@ config.selection <- function(boot.mat, max=TRUE){
   return(final.best.idx)
 }
 
-cut.pts <- c(0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6)
-cut.pt <- 0.1
+cut.pts <- c(0.1, 0.2, 0.25, 0.3)
+cut.pt <- 0.2
 library(Rcpp)
 library(aucC)
 library(doParallel)

@@ -10,9 +10,11 @@ library(dplyr)
 
 cluster.file <- "./cluster-no-biomarkers.log"
 trained.model.file <- "./results/trained-models-no-biomarkers.RData"
+feature.importance.file <- "./results/feature_importance_no_biomarkers.csv"
 oos.prediction.file <- "./results/trained-model-predictions-no-biomarkers.RData"
 boot.res.file <- "./results/results-bbccv-no-biomarkers.RData"
 boot.ci.csv <- "./results/ci-no-biomarkers.csv"
+lr.csv.file <- "./results/lr-no-biomarkers.csv"
 
 load(file=trained.model.file)
 
@@ -48,7 +50,7 @@ resamples(trained_models) %>% summary(metric="ROC")
 
 xgboost::xgb.importance(model=xgbFit$finalModel) %>% select(Feature, Gain) %>% 
   mutate(Gain=round(100*Gain, 1)) %>% 
-  write.csv(file="./results/feature_importance_no_biomarkers.csv", row.names = F)
+  write.csv(file=feature.importance.file, row.names = F)
 
 
 ### Bootstrap Approach
@@ -138,7 +140,7 @@ config.selection <- function(boot.mat, max=TRUE){
   return(final.best.idx)
 }
 
-cut.pts <- c(0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6)
+cut.pts <- c(0.1, 0.2, 0.25, 0.3)
 library(Rcpp)
 library(aucC)
 library(doParallel)
@@ -146,7 +148,7 @@ library(abind)
 library(foreach)
 
 message("Beginning Bootstrap...")
-cl <- makeCluster(5, "FORK", outfile=cluster.file)
+cl <- makeCluster(4, "FORK", outfile=cluster.file)
 registerDoParallel(cl)
 boot_stats <- foreach(b=1:B, 
                       .noexport = "aucC"
@@ -195,8 +197,8 @@ save(boot_stats, file=boot.res.file)
 print(paste0("# Errors: ", sum(is.na(boot_stats))))
 boot_stats <- abind(boot_stats[!is.na(boot_stats)], along=3)
 
-apply(boot_stats[,1,], 1, function(x) sum(is.na(x)))
-apply(boot_stats[,7,], 1, function(x) sum(is.na(x)))
+# apply(boot_stats[,1,], 1, function(x) sum(is.na(x)))
+# apply(boot_stats[,7,], 1, function(x) sum(is.na(x)))
 
 # boot_stats <- boot_stats[,-1,]
 cis <- apply(boot_stats, c(1,2), quantile, probs=c(0.025, 0.975), na.rm=T)
@@ -233,3 +235,56 @@ pretty_naive_cis <- sapply(seq_along(naive_est), function(i){
 
 print("Naive Results:")
 print(pretty_naive_cis)
+
+###########################
+#### Likelihood Ratios ####
+###########################
+
+lr_fun <- function(sens, spec){
+  if(1-spec < .Machine$double.eps) {
+    lr_pos <- Inf
+  } else {
+    lr_pos <- sens/(1-spec)
+  }
+  
+  if(spec < .Machine$double.eps) {
+    lr_neg <- Inf
+  } else {
+    lr_neg <- (1-sens)/spec
+  }
+  
+  return(
+    c(LRp=lr_pos, LRn=lr_neg)
+  )
+}
+lr_boot <- foreach(cut.idx=seq_along(cut.pts), .combine=rbind) %do% {
+  sens <- boot_stats[2, cut.idx,]
+  spec <- boot_stats[3, cut.idx,]
+  
+  lr_boot <- mapply(lr_fun, sens, spec)
+  lrps <- lr_boot[1,]
+  lrns <- lr_boot[2,]
+  
+  lrp_ci <- quantile(lrps, probs=c(0.025, 0.975))
+  lrn_ci <- quantile(lrns, probs=c(0.025, 0.975))
+  
+  if(is.infinite(lrp_ci[2])){
+    # use conservative method
+    max_sens <- cis[2, 2, cut.idx]
+    max_spec <- cis[2, 3, cut.idx]
+    lrp_ci[2] <- max_sens/(1-max_spec)
+  } 
+  if(is.infinite(lrn_ci[2])){
+    min_sens <- cis[1, 2, cut.idx]
+    min_spec <- cis[1, 3, cut.idx]
+    lrn_ci[2] <- (1-min_sens)/min_spec
+  }
+  
+  c(
+    paste0(round(median(lrps),3), " (", paste(round(lrp_ci,3), collapse=", "), ")"),
+    paste0(round(median(lrns),3), " (", paste(round(lrn_ci,3), collapse=", "), ")")
+  )
+}
+colnames(lr_boot) <- c("LR+", "LR-")
+rownames(lr_boot) <- cut.pts
+write.csv(lr_boot, file=lr.csv.file)
